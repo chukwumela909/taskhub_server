@@ -82,7 +82,7 @@ const userLogin = async (req, res) => {
             { expiresIn: '30d' }
           );
 
-        return res.status(200).json({status: "success", token });
+        return res.status(200).json({status: "success", token, user_type: 'user' });
     } catch (error) {
         res.status(500).json({ message: 'Error logging in', error });
     }
@@ -163,7 +163,7 @@ const taskerLogin = async (req, res) => {
             { expiresIn: '30d' }
           );
 
-        return res.status(200).json({status: "success", token });
+        return res.status(200).json({status: "success", token, user_type: 'tasker' });
     } catch (error) {
         res.status(500).json({ message: 'Error logging in', error });
     }
