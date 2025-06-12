@@ -16,15 +16,15 @@ const taskSchema = new Schema({
     tags: [{ 
         type: String 
     }],
-    media: [{
-        url: { type: String, required: true },
-        type: { type: String, enum: ['image', 'video', 'document'], required: true },
-        publicId: { type: String }
+    images: [{
+        url: { type: String, required: true }
     }],
     location: {
         address: { type: String, required: true },
         state: { type: String, required: true },
-        country: { type: String, required: true }
+        country: { type: String, required: true },
+        latitude: { type: Number },
+        longitude: { type: Number }
     },
     budget: { 
         type: Number, 

@@ -9,7 +9,7 @@ const isValidObjectId = (id) => {
 // Create a new task
 const createTask = async (req, res) => {
     try {
-        const { title, description, category, tags, media, location, budget, isBiddingEnabled, deadline } = req.body;
+        const { title, description, category, tags, images, location, budget, isBiddingEnabled, deadline } = req.body;
         
         // Required fields validation
         const requiredFields = {
@@ -35,22 +35,14 @@ const createTask = async (req, res) => {
             });
         }
 
-        // Validate media array if provided
-        if (media && Array.isArray(media)) {
-            for (let i = 0; i < media.length; i++) {
-                if (!media[i].url || !media[i].type) {
+        // Validate images array if provided
+        if (images && Array.isArray(images)) {
+            for (let i = 0; i < images.length; i++) {
+                if (!images[i].url) {
                     return res.status(400).json({
                         status: "error",
-                        message: "Invalid media format",
-                        details: `Media item at index ${i} is missing required fields (url or type)`
-                    });
-                }
-                
-                if (!['image', 'video', 'document'].includes(media[i].type)) {
-                    return res.status(400).json({
-                        status: "error",
-                        message: "Invalid media type",
-                        details: `Media type must be one of: image, video, document`
+                        message: "Invalid image format",
+                        details: `Image at index ${i} is missing the URL`
                     });
                 }
             }
@@ -82,8 +74,14 @@ const createTask = async (req, res) => {
             description,
             category,
             tags: tags || [],
-            media: media || [],
-            location,
+            images: images || [],
+            location: {
+                address: location.address,
+                state: location.state,
+                country: location.country,
+                latitude: location.latitude || null,
+                longitude: location.longitude || null
+            },
             budget,
             isBiddingEnabled: isBiddingEnabled || false,
             deadline: deadline || null,
@@ -236,37 +234,41 @@ const updateTask = async (req, res) => {
             });
         }
         
-        // Validate media array if provided
-        if (req.body.media && Array.isArray(req.body.media)) {
-            for (let i = 0; i < req.body.media.length; i++) {
-                if (!req.body.media[i].url || !req.body.media[i].type) {
+        // Validate images array if provided
+        if (req.body.images && Array.isArray(req.body.images)) {
+            for (let i = 0; i < req.body.images.length; i++) {
+                if (!req.body.images[i].url) {
                     return res.status(400).json({
                         status: "error",
-                        message: "Invalid media format",
-                        details: `Media item at index ${i} is missing required fields (url or type)`
-                    });
-                }
-                
-                if (!['image', 'video', 'document'].includes(req.body.media[i].type)) {
-                    return res.status(400).json({
-                        status: "error",
-                        message: "Invalid media type",
-                        details: `Media type must be one of: image, video, document`
+                        message: "Invalid image format",
+                        details: `Image at index ${i} is missing the URL`
                     });
                 }
             }
         }
         
+        // Prepare update data
+        const updateData = { ...req.body, updatedAt: Date.now() };
+        
+        // Handle location update
+        if (req.body.location) {
+            updateData.location = {
+                address: req.body.location.address || task.location.address,
+                state: req.body.location.state || task.location.state,
+                country: req.body.location.country || task.location.country,
+                latitude: req.body.location.latitude !== undefined ? req.body.location.latitude : task.location.latitude,
+                longitude: req.body.location.longitude !== undefined ? req.body.location.longitude : task.location.longitude
+            };
+        }
+        
+        // Prevent updating user or assignedTasker
+        updateData.user = task.user;
+        updateData.assignedTasker = task.assignedTasker;
+        
         // Update the task
         const updatedTask = await Task.findByIdAndUpdate(
             id,
-            { 
-                ...req.body, 
-                updatedAt: Date.now(),
-                // Prevent updating user or assignedTasker
-                user: task.user,
-                assignedTasker: task.assignedTasker
-            },
+            updateData,
             { new: true, runValidators: true }
         );
         
