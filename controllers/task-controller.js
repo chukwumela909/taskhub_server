@@ -14,15 +14,14 @@ const createTask = async (req, res) => {
         // Required fields validation
         const requiredFields = {
             title, description, category, 
-            'location.address': location?.address,
-            'location.state': location?.state,
-            'location.country': location?.country,
+            'location.latitude': location?.latitude,
+            'location.longitude': location?.longitude,
             budget
         };
         
         const missingFields = [];
         for (const [field, value] of Object.entries(requiredFields)) {
-            if (!value) {
+            if (value === undefined || value === null) {
                 missingFields.push(field);
             }
         }
@@ -57,6 +56,15 @@ const createTask = async (req, res) => {
             });
         }
         
+        // Validate location coordinates
+        if (isNaN(location.latitude) || isNaN(location.longitude)) {
+            return res.status(400).json({
+                status: "error",
+                message: "Invalid location coordinates",
+                details: "Latitude and longitude must be valid numbers"
+            });
+        }
+        
         // Validate deadline if provided
         if (deadline) {
             const deadlineDate = new Date(deadline);
@@ -76,11 +84,9 @@ const createTask = async (req, res) => {
             tags: tags || [],
             images: images || [],
             location: {
-                address: location.address,
-                state: location.state,
-                country: location.country,
-                latitude: location.latitude || null,
-                longitude: location.longitude || null
+                latitude: location.latitude,
+                longitude: location.longitude,
+
             },
             budget,
             isBiddingEnabled: isBiddingEnabled || false,
@@ -252,12 +258,30 @@ const updateTask = async (req, res) => {
         
         // Handle location update
         if (req.body.location) {
+            // Validate required location fields if updating location
+            if (req.body.location.latitude === undefined || req.body.location.longitude === undefined) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid location data",
+                    details: "Latitude and longitude are required when updating location"
+                });
+            }
+            
+            // Validate location coordinates
+            if (isNaN(req.body.location.latitude) || isNaN(req.body.location.longitude)) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid location coordinates",
+                    details: "Latitude and longitude must be valid numbers"
+                });
+            }
+            
             updateData.location = {
-                address: req.body.location.address || task.location.address,
-                state: req.body.location.state || task.location.state,
-                country: req.body.location.country || task.location.country,
-                latitude: req.body.location.latitude !== undefined ? req.body.location.latitude : task.location.latitude,
-                longitude: req.body.location.longitude !== undefined ? req.body.location.longitude : task.location.longitude
+                latitude: req.body.location.latitude,
+                longitude: req.body.location.longitude,
+                address: req.body.location.address || task.location.address || "",
+                state: req.body.location.state || task.location.state || "",
+                country: req.body.location.country || task.location.country || ""
             };
         }
         

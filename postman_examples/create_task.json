@@ -12,9 +12,6 @@
     }
   ],
   "location": {
-    "address": "123 Main Street, Apt 4B",
-    "state": "California",
-    "country": "USA",
     "latitude": 37.7749,
     "longitude": -122.4194
   },

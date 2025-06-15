@@ -1,0 +1,10 @@
+{
+  "title": "Fix leaking bathroom faucet",
+  "description": "The bathroom sink faucet is constantly dripping and needs to be fixed.",
+  "category": "Plumbing",
+  "location": {
+    "latitude": 37.7749,
+    "longitude": -122.4194
+  },
+  "budget": 80
+} 

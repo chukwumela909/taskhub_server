@@ -20,11 +20,8 @@ const taskSchema = new Schema({
         url: { type: String, required: true }
     }],
     location: {
-        address: { type: String, required: true },
-        state: { type: String, required: true },
-        country: { type: String, required: true },
-        latitude: { type: Number },
-        longitude: { type: Number }
+        latitude: { type: Number, required: true },
+        longitude: { type: Number, required: true },
     },
     budget: { 
         type: Number, 
