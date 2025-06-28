@@ -6,7 +6,8 @@ const {
     updateTask, 
     deleteTask, 
     getUserTasks,
-    changeTaskStatus
+    changeTaskStatus,
+    getTaskerFeed
 } = require('../controllers/task-controller');
 const { protectUser, protectTasker } = require('../middlewares/authMiddleware');
 
@@ -21,6 +22,9 @@ router.post('/', protectUser, createTask);
 router.put('/:id', protectUser, updateTask);
 router.delete('/:id', protectUser, deleteTask);
 router.get('/user/tasks', protectUser, getUserTasks);
+
+// Tasker protected routes
+router.get('/tasker/feed', protectTasker, getTaskerFeed);
 
 // Task status routes
 router.patch('/:id/status', protectUser, changeTaskStatus); // For user to cancel task

@@ -1,24 +1,29 @@
 const express = require('express');
 const { 
     createCategory, 
-    getAllCategories, 
+    getAllCategories,
+    getAllCategoriesAdmin, 
     getCategoryById, 
     updateCategory, 
-    deleteCategory 
+    deactivateCategory,
+    getCategoryStats
 } = require('../controllers/category-controller');
+const { protectAdmin } = require('../middlewares/adminMiddleware');
 const { protectUser } = require('../middlewares/authMiddleware');
 
 // Add admin middleware later for restricted operations
 
 const router = express.Router();
 
-// Public routes
+// Public routes (no authentication required)
 router.get('/', getAllCategories);
 router.get('/:id', getCategoryById);
 
-// Admin protected routes - temporarily using protectUser until admin role is implemented
-router.post('/', protectUser, createCategory);
-router.put('/:id', protectUser, updateCategory);
-router.delete('/:id', protectUser, deleteCategory);
+// Admin protected routes
+router.get('/admin/all', protectUser, getAllCategoriesAdmin);
+router.get('/admin/:id/stats', protectUser, getCategoryStats);
+router.post('/admin', protectUser, createCategory);
+router.put('/admin/:id', protectUser, updateCategory);
+router.patch('/admin/:id/deactivate', protectUser, deactivateCategory);
 
 module.exports = router; 

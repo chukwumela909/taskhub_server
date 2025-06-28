@@ -23,6 +23,11 @@ const bidSchema = new Schema({
         enum: ['pending', 'accepted', 'rejected'],
         default: 'pending'
     },
+    bidType: {
+        type: String,
+        enum: ['custom', 'fixed'],
+        default: 'custom'
+    },
     createdAt: {
         type: Date,
         default: Date.now

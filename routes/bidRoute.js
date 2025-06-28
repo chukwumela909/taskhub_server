@@ -20,7 +20,7 @@ router.get('/tasker/bids', protectTasker, getTaskerBids);
 
 // User bid routes
 router.get('/task/:taskId', protectUser, getTaskBids);
-router.patch('/:id/accept', protectUser, acceptBid);
+router.post('/:id/accept', protectUser, acceptBid);
 
 // Both user and tasker can view a specific bid (if authorized)
 router.get('/:id', protectUser, getBidById); // This will work for taskers too due to the bid ownership check

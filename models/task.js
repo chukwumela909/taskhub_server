@@ -9,10 +9,10 @@ const taskSchema = new Schema({
         type: String, 
         required: true 
     },
-    category: { 
-        type: String, 
-        required: true 
-    },
+    categories: [{ 
+        type: Schema.Types.ObjectId,
+        ref: 'Category'
+    }],
     tags: [{ 
         type: String 
     }],
@@ -57,6 +57,14 @@ const taskSchema = new Schema({
         default: Date.now 
     }
 });
+
+// Add custom validation to ensure at least one category
+taskSchema.path('categories').validate(function(value) {
+    return value && value.length > 0;
+}, 'At least one category is required');
+
+// Create geospatial index for location-based queries
+taskSchema.index({ location: '2dsphere' });
 
 const Task = model('Task', taskSchema);
 

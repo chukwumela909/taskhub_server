@@ -9,18 +9,24 @@ const isValidObjectId = (id) => {
 // Create a new category (admin only)
 const createCategory = async (req, res) => {
     try {
-        const { name, description, icon } = req.body;
+        const { name, displayName, description } = req.body;
         
         // Validate required fields
-        if (!name) {
+        if (!name || !displayName) {
             return res.status(400).json({
                 status: "error",
-                message: "Category name is required"
+                message: "Category name and display name are required"
             });
         }
         
+        // Convert name to lowercase and replace spaces with hyphens
+        const normalizedName = name.toLowerCase().trim().replace(/\s+/g, '-');
+        
         // Check if category already exists
-        const existingCategory = await Category.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
+        const existingCategory = await Category.findOne({ 
+            name: normalizedName 
+        });
+        
         if (existingCategory) {
             return res.status(400).json({
                 status: "error",
@@ -29,9 +35,10 @@ const createCategory = async (req, res) => {
         }
         
         const category = new Category({
-            name,
+            name: normalizedName,
+            displayName: displayName.trim(),
             description: description || '',
-            icon: icon || ''
+            createdBy: req.user._id
         });
         
         await category.save();
@@ -60,14 +67,13 @@ const createCategory = async (req, res) => {
     }
 };
 
-// Get all categories
+// Get all categories (public endpoint for selection)
 const getAllCategories = async (req, res) => {
     try {
-        // By default, only return active categories unless specified
-        const showInactive = req.query.showInactive === 'true';
-        const filter = showInactive ? {} : { active: true };
-        
-        const categories = await Category.find(filter).sort({ name: 1 });
+        // For public use, only return active categories
+        const categories = await Category.find({ isActive: true })
+            .select('_id name displayName description')
+            .sort({ displayName: 1 });
             
         res.status(200).json({
             status: "success",
@@ -76,6 +82,31 @@ const getAllCategories = async (req, res) => {
         });
     } catch (error) {
         console.error("Get all categories error:", error);
+        res.status(500).json({
+            status: "error",
+            message: "Error fetching categories",
+            error: error.message
+        });
+    }
+};
+
+// Get all categories for admin (includes inactive)
+const getAllCategoriesAdmin = async (req, res) => {
+    try {
+        const showInactive = req.query.showInactive === 'true';
+        const filter = showInactive ? {} : { isActive: true };
+        
+        const categories = await Category.find(filter)
+            .populate('createdBy', 'fullName emailAddress')
+            .sort({ displayName: 1 });
+            
+        res.status(200).json({
+            status: "success",
+            count: categories.length,
+            categories
+        });
+    } catch (error) {
+        console.error("Get all categories admin error:", error);
         res.status(500).json({
             status: "error",
             message: "Error fetching categories",
@@ -97,7 +128,8 @@ const getCategoryById = async (req, res) => {
             });
         }
         
-        const category = await Category.findById(id);
+        const category = await Category.findById(id)
+            .populate('createdBy', 'fullName emailAddress');
             
         if (!category) {
             return res.status(404).json({
@@ -124,7 +156,7 @@ const getCategoryById = async (req, res) => {
 const updateCategory = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, description, icon, active } = req.body;
+        const { name, displayName, description, isActive } = req.body;
         
         // Validate Object ID
         if (!isValidObjectId(id)) {
@@ -145,8 +177,9 @@ const updateCategory = async (req, res) => {
         
         // Check for duplicate name if name is being updated
         if (name && name !== category.name) {
+            const normalizedName = name.toLowerCase().trim().replace(/\s+/g, '-');
             const existingCategory = await Category.findOne({ 
-                name: { $regex: new RegExp(`^${name}$`, 'i') },
+                name: normalizedName,
                 _id: { $ne: id }
             });
             
@@ -156,13 +189,13 @@ const updateCategory = async (req, res) => {
                     message: "Another category with this name already exists"
                 });
             }
+            category.name = normalizedName;
         }
         
         // Update fields if provided
-        if (name) category.name = name;
+        if (displayName) category.displayName = displayName.trim();
         if (description !== undefined) category.description = description;
-        if (icon !== undefined) category.icon = icon;
-        if (active !== undefined) category.active = active;
+        if (isActive !== undefined) category.isActive = isActive;
         
         await category.save();
         
@@ -190,8 +223,8 @@ const updateCategory = async (req, res) => {
     }
 };
 
-// Delete a category (admin only)
-const deleteCategory = async (req, res) => {
+// Deactivate a category (admin only) - safer than deleting
+const deactivateCategory = async (req, res) => {
     try {
         const { id } = req.params;
         
@@ -212,19 +245,92 @@ const deleteCategory = async (req, res) => {
             });
         }
         
-        // Instead of hard deleting, consider setting active to false
-        // or check for tasks using this category first
-        await Category.findByIdAndDelete(id);
+        // Check if category is being used by any tasks or taskers
+        const Task = require('../models/task');
+        const Tasker = require('../models/tasker');
+        
+        const tasksUsingCategory = await Task.countDocuments({ categories: id });
+        const taskersUsingCategory = await Tasker.countDocuments({ categories: id });
+        
+        if (tasksUsingCategory > 0 || taskersUsingCategory > 0) {
+            return res.status(400).json({
+                status: "error",
+                message: `Cannot deactivate category. It is currently being used by ${tasksUsingCategory} tasks and ${taskersUsingCategory} taskers.`,
+                usage: {
+                    tasks: tasksUsingCategory,
+                    taskers: taskersUsingCategory
+                }
+            });
+        }
+        
+        category.isActive = false;
+        await category.save();
         
         res.status(200).json({
             status: "success",
-            message: "Category deleted successfully"
+            message: "Category deactivated successfully"
         });
     } catch (error) {
-        console.error("Delete category error:", error);
+        console.error("Deactivate category error:", error);
         res.status(500).json({
             status: "error",
-            message: "Error deleting category",
+            message: "Error deactivating category",
+            error: error.message
+        });
+    }
+};
+
+// Get category usage statistics (admin only)
+const getCategoryStats = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        if (!isValidObjectId(id)) {
+            return res.status(400).json({
+                status: "error",
+                message: "Invalid category ID format"
+            });
+        }
+        
+        const category = await Category.findById(id);
+        
+        if (!category) {
+            return res.status(404).json({
+                status: "error",
+                message: "Category not found"
+            });
+        }
+        
+        const Task = require('../models/task');
+        const Tasker = require('../models/tasker');
+        
+        const [tasksCount, taskersCount, recentTasks] = await Promise.all([
+            Task.countDocuments({ categories: id }),
+            Tasker.countDocuments({ categories: id }),
+            Task.find({ categories: id })
+                .sort({ createdAt: -1 })
+                .limit(5)
+                .select('title createdAt status')
+        ]);
+        
+        res.status(200).json({
+            status: "success",
+            category: {
+                _id: category._id,
+                name: category.name,
+                displayName: category.displayName
+            },
+            stats: {
+                totalTasks: tasksCount,
+                totalTaskers: taskersCount,
+                recentTasks
+            }
+        });
+    } catch (error) {
+        console.error("Get category stats error:", error);
+        res.status(500).json({
+            status: "error",
+            message: "Error fetching category statistics",
             error: error.message
         });
     }
@@ -233,7 +339,9 @@ const deleteCategory = async (req, res) => {
 module.exports = {
     createCategory,
     getAllCategories,
+    getAllCategoriesAdmin,
     getCategoryById,
     updateCategory,
-    deleteCategory
+    deactivateCategory,
+    getCategoryStats
 }; 

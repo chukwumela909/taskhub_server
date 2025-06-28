@@ -12,12 +12,12 @@ const createBid = async (req, res) => {
     try {
         const { taskId, amount, message } = req.body;
         
-        // Validate required fields
-        if (!taskId || !amount) {
+        // Validate required fields - taskId is always required
+        if (!taskId) {
             return res.status(400).json({
                 status: "error",
                 message: "Missing required fields",
-                missingFields: !taskId ? ['taskId'] : !amount ? ['amount'] : []
+                missingFields: ['taskId']
             });
         }
         
@@ -26,15 +26,6 @@ const createBid = async (req, res) => {
             return res.status(400).json({
                 status: "error",
                 message: "Invalid task ID format"
-            });
-        }
-        
-        // Validate amount
-        if (isNaN(amount) || amount <= 0) {
-            return res.status(400).json({
-                status: "error",
-                message: "Invalid amount value",
-                details: "Amount must be a positive number"
             });
         }
         
@@ -47,58 +38,89 @@ const createBid = async (req, res) => {
             });
         }
         
-        // Check if task is open for bidding
+        // Check if task is open for bidding/application
         if (task.status !== 'open') {
             return res.status(400).json({
                 status: "error",
-                message: "Task is not open for bidding",
+                message: "Task is not open for applications",
                 details: `Current task status is '${task.status}'`
             });
         }
         
-        // Check if bidding is enabled for this task
-        if (!task.isBiddingEnabled) {
-            return res.status(400).json({
-                status: "error",
-                message: "Bidding is not enabled for this task"
-            });
-        }
-        
         // Check if the user is not bidding on their own task
-        if (task.user.toString() === req.user._id.toString()) {
+        if (task.user.toString() === req.tasker._id.toString()) {
             return res.status(400).json({
                 status: "error",
-                message: "You cannot bid on your own task"
+                message: "You cannot apply for your own task"
             });
         }
         
         // Check if the tasker has already placed a bid on this task
         const existingBid = await Bid.findOne({
             task: taskId,
-            tasker: req.user._id
+            tasker: req.tasker._id
         });
         
         if (existingBid) {
             return res.status(400).json({
                 status: "error",
-                message: "You have already placed a bid on this task",
-                details: "Use the update bid endpoint to modify your existing bid"
+                message: "You have already applied for this task",
+                details: "Use the update bid endpoint to modify your existing application"
             });
+        }
+        
+        // Determine bid type and amount based on task settings
+        let finalAmount;
+        let bidType;
+        
+        if (task.isBiddingEnabled) {
+            // Bidding enabled: Tasker sets their own price
+            if (!amount) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Amount is required for bidding-enabled tasks",
+                    missingFields: ['amount']
+                });
+            }
+            
+            // Validate amount
+            if (isNaN(amount) || amount <= 0) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid amount value",
+                    details: "Amount must be a positive number"
+                });
+            }
+            
+            finalAmount = amount;
+            bidType = 'custom';
+        } else {
+            // Bidding disabled: Use task's fixed budget price
+            finalAmount = task.budget;
+            bidType = 'fixed';
         }
         
         const bid = new Bid({
             task: taskId,
-            tasker: req.user._id,
-            amount,
-            message: message || ""
+            tasker: req.tasker._id,
+            amount: finalAmount,
+            message: message || "",
+            bidType: bidType
         });
         
         await bid.save();
         
+        const responseMessage = task.isBiddingEnabled 
+            ? "Bid placed successfully" 
+            : "Application submitted successfully";
+        
         res.status(201).json({
             status: "success",
-            message: "Bid placed successfully",
-            bid
+            message: responseMessage,
+            bid: {
+                ...bid.toObject(),
+                taskBiddingEnabled: task.isBiddingEnabled
+            }
         });
     } catch (error) {
         console.error("Create bid error:", error);
@@ -107,13 +129,13 @@ const createBid = async (req, res) => {
         if (error.code === 11000) {
             return res.status(400).json({
                 status: "error",
-                message: "You have already placed a bid on this task"
+                message: "You have already applied for this task"
             });
         }
         
         res.status(500).json({
             status: "error",
-            message: "Error placing bid",
+            message: "Error submitting application",
             error: error.message
         });
     }
@@ -133,15 +155,6 @@ const updateBid = async (req, res) => {
             });
         }
         
-        // Validate amount
-        if (amount !== undefined && (isNaN(amount) || amount <= 0)) {
-            return res.status(400).json({
-                status: "error",
-                message: "Invalid amount value",
-                details: "Amount must be a positive number"
-            });
-        }
-        
         // Find the bid
         const bid = await Bid.findById(id);
         
@@ -153,7 +166,7 @@ const updateBid = async (req, res) => {
         }
         
         // Check if the user is the owner of the bid
-        if (bid.tasker.toString() !== req.user._id.toString()) {
+        if (bid.tasker.toString() !== req.tasker._id.toString()) {
             return res.status(403).json({
                 status: "error",
                 message: "You are not authorized to update this bid"
@@ -179,11 +192,29 @@ const updateBid = async (req, res) => {
             });
         }
         
-        // Update the bid
+        // Handle amount updates based on bid type
         if (amount !== undefined) {
+            if (bid.bidType === 'fixed') {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Cannot update amount for fixed-price applications",
+                    details: "This task has a fixed budget and doesn't allow custom pricing"
+                });
+            }
+            
+            // Validate amount for custom bids
+            if (isNaN(amount) || amount <= 0) {
+                return res.status(400).json({
+                    status: "error",
+                    message: "Invalid amount value",
+                    details: "Amount must be a positive number"
+                });
+            }
+            
             bid.amount = amount;
         }
         
+        // Message can always be updated
         if (message !== undefined) {
             bid.message = message;
         }
@@ -192,14 +223,14 @@ const updateBid = async (req, res) => {
         
         res.status(200).json({
             status: "success",
-            message: "Bid updated successfully",
+            message: "Application updated successfully",
             bid
         });
     } catch (error) {
         console.error("Update bid error:", error);
         res.status(500).json({
             status: "error",
-            message: "Error updating bid",
+            message: "Error updating application",
             error: error.message
         });
     }
@@ -229,7 +260,7 @@ const deleteBid = async (req, res) => {
         }
         
         // Check if the user is the owner of the bid
-        if (bid.tasker.toString() !== req.user._id.toString()) {
+        if (bid.tasker.toString() !== req.tasker._id.toString()) {
             return res.status(403).json({
                 status: "error",
                 message: "You are not authorized to delete this bid"
@@ -294,11 +325,19 @@ const getTaskBids = async (req, res) => {
         const bids = await Bid.find({ task: taskId })
             .populate('tasker', 'firstName lastName profilePicture')
             .sort({ createdAt: -1 });
+        
+        // Add additional information to each bid
+        const enhancedBids = bids.map(bid => ({
+            ...bid.toObject(),
+            bidTypeLabel: bid.bidType === 'fixed' ? 'Fixed Price Application' : 'Custom Bid',
+            isFixedPrice: bid.bidType === 'fixed'
+        }));
             
         res.status(200).json({
             status: "success",
             count: bids.length,
-            bids
+            taskBiddingEnabled: task.isBiddingEnabled,
+            bids: enhancedBids
         });
     } catch (error) {
         console.error("Get task bids error:", error);
@@ -431,7 +470,7 @@ const getTaskerBids = async (req, res) => {
         const skip = (page - 1) * limit;
         
         // Filter options
-        const filterOptions = { tasker: req.user._id };
+        const filterOptions = { tasker: req.tasker._id };
         
         // Filter by status if provided
         if (req.query.status && ['pending', 'accepted', 'rejected'].includes(req.query.status)) {
